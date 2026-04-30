@@ -20,6 +20,7 @@ app.use("/carros", carroRoutes);
 app.use("/clientes", clienteRoutes);
 app.use("/servicos", servicoRoutes);
 
-app.listen(3001, () => {
-  console.log("Servidor na porta 3001 check");
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Servidor na porta ${PORT} check`);
 });
