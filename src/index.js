@@ -12,13 +12,7 @@ const app = express();
 
 //Middlewares
 app.use(express.json()); //para identificar formato json
-app.use(
-  cors({
-    origin: "https://oficina-frontend-ten.vercel.app",
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  }),
-);
+app.use(cors());
 
 //Prefixes
 app.use("/auth", authRoutes);
