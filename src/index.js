@@ -12,7 +12,13 @@ const app = express();
 
 //Middlewares
 app.use(express.json()); //para identificar formato json
-app.use(cors()); // Permite que o React consiga aceder à API
+app.use(
+  cors({
+    origin: "https://oficina-frontend-ten.vercel.app",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
 
 //Prefixes
 app.use("/auth", authRoutes);
