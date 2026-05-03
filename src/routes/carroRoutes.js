@@ -23,5 +23,6 @@ router.get(
 );
 
 router.post("/", verificarToken, criarLimiter, carroController.addCarro);
+router.put("/editar/:id", verificarToken, carroController.updateCarro);
 
 module.exports = router;

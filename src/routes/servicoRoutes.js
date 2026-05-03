@@ -9,7 +9,7 @@ router.get(
   verificarToken,
   servicoController.getServicosPorCarro,
 );
-router.get("/editar/:id", servicoController.getServicosPorId);
+router.get("/editar/:id", verificarToken, servicoController.getServicosPorId);
 router.post("/", verificarToken, servicoController.addServico);
 router.put("/editar/:id", verificarToken, servicoController.updateServico);
 

@@ -146,3 +146,128 @@ exports.addCarro = async (req, res) => {
       .json({ erro: "Erro ao processar a imagem do veículo", error });
   }
 };
+
+exports.updateCarro = async (req, res) => {
+  const matriculaAtual = req.params.id; // O ID (Matrícula) que vem no URL da rota
+  const OficinaId = req.oficinaId;
+  const { MatriculaId, Marca, Modelo, Ano, Vin, Cor, Motor, ClienteId } =
+    req.body;
+
+  try {
+    // 1. Procurar o carro atual para comparar os dados
+    const carroAntigo = await new Promise((resolve, reject) => {
+      db.query(
+        "SELECT * FROM Carro WHERE MatriculaId = ? AND OficinaId = ?",
+        [matriculaAtual, OficinaId],
+        (err, results) => {
+          if (err) reject(err);
+          else resolve(results.length > 0 ? results[0] : null);
+        },
+      );
+    });
+
+    if (!carroAntigo) {
+      return res.status(404).json({ erro: "Veículo não encontrado." });
+    }
+
+    let ImagemUrl = carroAntigo.ImagemUrl;
+
+    // 2. Verificar se mudou alguma característica visual que exija nova imagem
+    const mudouVisual =
+      carroAntigo.Marca !== Marca ||
+      carroAntigo.Modelo !== Modelo ||
+      String(carroAntigo.Ano) !== String(Ano) || // String para evitar bugs de tipos (int vs string)
+      carroAntigo.Cor !== Cor;
+
+    if (mudouVisual) {
+      console.log(
+        "Características visuais alteradas. A processar nova imagem...",
+      );
+
+      // Verifica se já existe uma imagem igual na BD para reaproveitar
+      const imagemExistente = await new Promise((resolve, reject) => {
+        const sqlBusca =
+          "SELECT ImagemUrl FROM Carro WHERE Marca = ? AND Modelo = ? AND Ano = ? AND Cor = ? AND ImagemUrl IS NOT NULL LIMIT 1";
+        db.query(sqlBusca, [Marca, Modelo, Ano, Cor], (err, results) => {
+          if (err) reject(err);
+          else resolve(results.length > 0 ? results[0].ImagemUrl : null);
+        });
+      });
+
+      if (imagemExistente) {
+        console.log(`Imagem atualizada reaproveitada da BD.`);
+        ImagemUrl = imagemExistente;
+      } else {
+        console.log(`A gerar nova imagem com IA para a atualização...`);
+        const prompt = `Crie uma fotografia fotorrealista de um carro ${Marca} ${Modelo} do ano ${Ano} com a cor ${Cor}. O veículo deve estar bem visível, com vista frontal de 3/4. O carro deve estar completamente isolado num fundo branco puro e sólido (pure white background), sem sombras projetadas no chão, com iluminação de estúdio neutra e difusa. Estilo recorte (cut-out) perfeito para conversão em PNG transparente.`;
+
+        const response = await ai.models.generateContent({
+          model: "gemini-3.1-flash-image-preview",
+          contents: prompt,
+          config: {
+            tools: [{ googleSearch: {} }],
+          },
+        });
+
+        const part = response.candidates[0].content.parts.find(
+          (p) => p.inlineData,
+        );
+        if (!part || !part.inlineData) {
+          throw new Error(
+            "A IA não conseguiu gerar a imagem para a atualização",
+          );
+        }
+
+        const mimeType = part.inlineData.mimeType || "image/png";
+        const base64Image = `data:${mimeType};base64,${part.inlineData.data}`;
+
+        console.log("A enviar a nova imagem para o Cloudinary...");
+        const uploadResult = await cloudinary.uploader.upload(base64Image, {
+          folder: "oficina_carros",
+          public_id: MatriculaId, // Ao usar a mesma matrícula, o Cloudinary substitui a imagem antiga automaticamente
+        });
+
+        ImagemUrl = uploadResult.secure_url;
+      }
+    }
+
+    // 3. Atualizar os dados na Base de Dados MySQL
+    const sqlUpdate = `
+      UPDATE Carro 
+      SET MatriculaId = ?, Marca = ?, Modelo = ?, Ano = ?, Vin = ?, ClienteId = ?, ImagemUrl = ?, Cor = ?, Motor = ?
+      WHERE MatriculaId = ? AND OficinaId = ?
+    `;
+
+    db.query(
+      sqlUpdate,
+      [
+        MatriculaId,
+        Marca,
+        Modelo,
+        Ano,
+        Vin,
+        ClienteId,
+        ImagemUrl,
+        Cor,
+        Motor,
+        matriculaAtual,
+        OficinaId,
+      ],
+      (err) => {
+        if (err) {
+          console.error("Erro no MySQL ao atualizar", err);
+          return res.status(500).send("Erro ao atualizar o carro");
+        }
+        res.status(200).json({
+          mensagem: "Veículo atualizado com sucesso!",
+          ImagemUrl,
+        });
+      },
+    );
+  } catch (error) {
+    console.error("Erro no processo de IA ou Update", error);
+    res
+      .status(500)
+      .json({ erro: "Erro ao processar a atualização do veículo", error });
+  }
+};
