@@ -17,32 +17,45 @@ exports.getCarros = (req, res) => {
 
 exports.getCarrosPorStatus = (req, res) => {
   const sql = `
-    SELECT DISTINCT Carro.*, Servico.Status, Servico.ServicoId
+    SELECT DISTINCT Carro.*, Servico.Status, Servico.ServicoId, Servico.DataServico, Servico.DataConclusao
     FROM Carro 
     INNER JOIN Servico ON Carro.CarroId = Servico.CarroId 
-    WHERE Servico.Status IN ('Pendente', 'Em Reparação', 'À Espera de Peças', 'Concluído')
-    AND Carro.OficinaId = ?
+    WHERE Carro.OficinaId = ?
+    AND (
+      Servico.Status IN ('Pendente', 'Em Reparação', 'À Espera de Peças')
+      OR 
+      (Servico.Status = 'Concluído' AND Servico.DataConclusao >= DATE_SUB(NOW(), INTERVAL 7 DAY))
+    )
   `;
-  db.query(sql, [req.OficinaId], (err, results) => {
-    if (err) return res.status(500).send("Erro ao carregar dados por status");
+
+  db.query(sql, [req.oficinaId], (err, results) => {
+    if (err) {
+      console.error("Erro ao carregar dados por status:", err);
+      return res.status(500).send("Erro ao carregar dados por status");
+    }
     res.json(results);
   });
 };
 
 exports.getCarroPorMatricula = (req, res) => {
-  const carroId = req.params.id; //Extrai o ID que vem do url do frotnend
+  const parametroPesquisa = req.params.id; //Extrai o ID que vem do url do frotnend
 
-  const sql = "SELECT * From Carro WHERE CarroId = ? AND OficinaId = ?";
-  db.query(sql, [carroId, req.oficinaId], (err, results) => {
-    if (err) {
-      return res.status(500).send("Erro a carregar o carro");
-    }
-    if (results.length > 0) {
-      res.json(results[0]);
-    } else {
-      return res.status(404).send("Erro ao encontrar");
-    }
-  });
+  const sql =
+    "SELECT * From Carro WHERE (CarroId = ? OR MatriculaId = ?) AND OficinaId = ?";
+  db.query(
+    sql,
+    [parametroPesquisa, parametroPesquisa, req.oficinaId],
+    (err, results) => {
+      if (err) {
+        return res.status(500).send("Erro a carregar o carro");
+      }
+      if (results.length > 0) {
+        res.json(results[0]);
+      } else {
+        return res.status(404).send("Erro ao encontrar");
+      }
+    },
+  );
 };
 
 exports.addCarro = async (req, res) => {
