@@ -7,16 +7,23 @@ const carroRoutes = require("./routes/carroRoutes");
 const servicoRoutes = require("./routes/servicoRoutes");
 const clienteRoutes = require("./routes/clienteRoutes");
 const authRoutes = require("./routes/authRoutes");
+const corsOptions = {
+  origin: [
+    "https://auto-gest-pt.vercel.app",
+    "https://localhost:5173",
+    "https://localhost:3001",
+  ],
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+  credentials: true,
+  optionsSuccessStatus: 204,
+};
 
 const app = express();
 
 //Middlewares
 app.use(express.json()); //para identificar formato json
 app.use(cors());
-app.use((req, res, next) => {
-  console.log(`[ALERTA] Alguém tentou aceder a: ${req.method} ${req.url}`);
-  next();
-});
+
 //Prefixes
 app.use("/auth", authRoutes);
 app.use("/carros", carroRoutes);
