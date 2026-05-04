@@ -46,6 +46,7 @@ exports.addServico = (req, res) => {
   } = req.body;
 
   const OficinaId = req.oficinaId;
+  const dataConclusao = Status === "Concluído" ? new Date() : null;
 
   const checkSql =
     "SELECT * FROM Servico WHERE CarroId = ? AND Status !='Concluído'";
@@ -62,7 +63,7 @@ exports.addServico = (req, res) => {
     }
 
     const sql =
-      "INSERT INTO Servico (OficinaId, CarroId, DataServico, Observacao, Status, Artigos, TipoServico, Kilometros, PrecoFinal) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)";
+      "INSERT INTO Servico (OficinaId, CarroId, DataServico, Observacao, Status, Artigos, TipoServico, Kilometros, PrecoFinal, DataConclusao) VALUES(? ,?, ?, ?, ?, ?, ?, ?, ?, ?)";
     db.query(
       sql,
       [
@@ -75,6 +76,7 @@ exports.addServico = (req, res) => {
         TipoServico,
         Kilometros,
         PrecoFinal,
+        dataConclusao,
       ],
       (err, results) => {
         if (err) return res.status(500).send("Erro ao adicionar serviço");
@@ -97,10 +99,11 @@ exports.updateServico = (req, res) => {
   } = req.body;
 
   const OficinaId = req.oficinaId;
+  const dataConclusao = Status === "Concluído" ? new Date() : null;
 
   const sql = `
     UPDATE Servico 
-    SET DataServico = ?, Observacao = ?, Status = ?, Artigos = ?, TipoServico = ?, Kilometros = ?, PrecoFinal = ?, DataConclusao = CASE WHEN ? = 'Concluído' THEN NOW() ELSE NULL END
+    SET DataServico = ?, Observacao = ?, Status = ?, Artigos = ?, TipoServico = ?, Kilometros = ?, PrecoFinal = ?, DataConclusao = ?
     WHERE ServicoId = ? AND OficinaId = ?
   `;
 
@@ -115,6 +118,7 @@ exports.updateServico = (req, res) => {
       Kilometros,
       PrecoFinal,
       Status,
+      dataConclusao,
       id,
       OficinaId,
     ],
