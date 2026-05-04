@@ -1,6 +1,7 @@
 const express = require("express");
 const upload = require("../middlewares/upload");
 const router = express.Router();
+const multer = require("multer");
 const servicoController = require("../controllers/servicoController");
 const verificarToken = require("../middlewares/authMiddleware");
 
