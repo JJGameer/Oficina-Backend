@@ -1,14 +1,23 @@
 const db = require("../config/db");
 
 exports.getClientes = (req, res) => {
-  db.query(
-    "SELECT * FROM Cliente WHERE OficinaId = ?",
-    [req.oficinaId],
-    (err, results) => {
-      if (err) return res.status(500).send("Erro ao carregar os clientes");
-      res.json(results);
-    },
-  );
+  const sql = `
+    SELECT 
+      Cliente.*, 
+      GROUP_CONCAT(Carro.MatriculaId SEPARATOR ', ') AS Matriculas
+    FROM Cliente
+    LEFT JOIN Carro ON Cliente.ClienteId = Carro.ClienteId
+    WHERE Cliente.OficinaId = ?
+    GROUP BY Cliente.ClienteId
+  `;
+
+  db.query(sql, [req.oficinaId], (err, results) => {
+    if (err) {
+      console.error("Erro ao carregar clientes e veículos:", err);
+      return res.status(500).json({ erro: "Erro ao carregar os clientes" });
+    }
+    res.json(results);
+  });
 };
 
 exports.addCliente = (req, res) => {
