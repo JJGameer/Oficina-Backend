@@ -23,11 +23,20 @@ exports.getServicosPorCarro = (req, res) => {
 exports.getServicosPorId = (req, res) => {
   const { id } = req.params;
   db.query(
-    "SELECT * FROM Servico WHERE ServicoId = ? AND OficinaId = ?",
+    `SELECT Servico.*, Carro.MatriculaId
+    FROM Servico
+    INNER JOIN Carro ON Servico.CarroId = Carro.CarroId
+    WHERE Servico.ServicoId = ? AND Servico.OficinaId = ?`,
     [id, req.oficinaId],
     (err, results) => {
-      if (err) return res.status(500).send(err);
-      // Enviamos apenas o primeiro objeto do array
+      if (err) {
+        console.error("Erro SQL:", err);
+        return res.status(500).send("Erro ao carregar o serviço");
+      }
+
+      if (results.length === 0) {
+        return res.status(404).send("Serviço não encontrado");
+      }
       res.json(results[0]);
     },
   );
