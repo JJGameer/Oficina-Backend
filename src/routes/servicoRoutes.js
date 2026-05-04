@@ -1,4 +1,5 @@
 const express = require("express");
+const upload = require("../middlewares/upload");
 const router = express.Router();
 const servicoController = require("../controllers/servicoController");
 const verificarToken = require("../middlewares/authMiddleware");
@@ -10,7 +11,17 @@ router.get(
   servicoController.getServicosPorCarro,
 );
 router.get("/editar/:id", verificarToken, servicoController.getServicosPorId);
-router.post("/", verificarToken, servicoController.addServico);
-router.put("/editar/:id", verificarToken, servicoController.updateServico);
+router.post(
+  "/",
+  verificarToken,
+  upload.array("ficheiros", 5),
+  servicoController.addServico,
+);
+router.put(
+  "/editar/:id",
+  verificarToken,
+  upload.array("ficheiros", 5),
+  servicoController.updateServico,
+);
 
 module.exports = router;

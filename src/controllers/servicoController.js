@@ -1,4 +1,18 @@
 const db = require("../config/db");
+const cloudinary = require("../config/cloudinary");
+
+const uploadToCloudinary = (fileBuffer) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { folder: "oficina_servicos", resource_type: "auto" },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result.secure_url);
+      },
+    );
+    uploadStream.end(fileBuffer);
+  });
+};
 
 exports.getServicos = (req, res) => {
   db.query(
@@ -42,7 +56,7 @@ exports.getServicosPorId = (req, res) => {
   );
 };
 
-exports.addServico = (req, res) => {
+exports.addServico = async (req, res) => {
   const {
     DataServico,
     Observacao,
@@ -53,26 +67,44 @@ exports.addServico = (req, res) => {
     CarroId,
     PrecoFinal,
   } = req.body;
-
   const OficinaId = req.oficinaId;
   const dataConclusao = Status === "Concluído" ? new Date() : null;
 
-  const checkSql =
-    "SELECT * FROM Servico WHERE CarroId = ? AND Status !='Concluído'";
+  try {
+    // 1. Verificar se o carro já tem serviço pendente
+    const checkSql =
+      "SELECT * FROM Servico WHERE CarroId = ? AND Status != 'Concluído'";
+    const servicosPendentes = await new Promise((resolve, reject) => {
+      db.query(checkSql, [CarroId], (err, results) => {
+        if (err) reject(err);
+        else resolve(results);
+      });
+    });
 
-  db.query(checkSql, [CarroId], (err, results) => {
-    if (err) {
-      return res.status(500).send("Erro ao verificar estado do veiculo");
-    }
-
-    if (results.length > 0) {
+    if (servicosPendentes.length > 0) {
       return res.status(400).json({
         erro: "Este veículo já tem um serviço em curso. Conclua-o primeiro!",
       });
     }
 
+    // 2. Processar uploads de anexos, se existirem
+    let anexosUrls = [];
+    if (req.files && req.files.length > 0) {
+      console.log(`Processando ${req.files.length} anexos...`);
+      const uploadPromises = req.files.map((file) =>
+        uploadToCloudinary(file.buffer),
+      );
+      anexosUrls = await Promise.all(uploadPromises);
+    }
+
+    // Transformar o array JavaScript num JSON válido para o MySQL
+    const anexosJSON =
+      anexosUrls.length > 0 ? JSON.stringify(anexosUrls) : null;
+
+    // 3. Inserir na Base de Dados
     const sql =
-      "INSERT INTO Servico (OficinaId, CarroId, DataServico, Observacao, Status, Artigos, TipoServico, Kilometros, PrecoFinal, DataConclusao) VALUES(? ,?, ?, ?, ?, ?, ?, ?, ?, ?)";
+      "INSERT INTO Servico (OficinaId, CarroId, DataServico, Observacao, Status, Artigos, TipoServico, Kilometros, PrecoFinal, DataConclusao, Anexos) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
     db.query(
       sql,
       [
@@ -86,17 +118,28 @@ exports.addServico = (req, res) => {
         Kilometros,
         PrecoFinal,
         dataConclusao,
+        anexosJSON,
       ],
       (err, results) => {
-        if (err) return res.status(500).send("Erro ao adicionar serviço");
-        res.status(201).json({ id: results.insertId, ...req.body });
+        if (err) {
+          console.error("Erro SQL:", err);
+          return res.status(500).send("Erro ao adicionar serviço");
+        }
+        res.status(201).json({
+          id: results.insertId,
+          message: "Serviço criado com sucesso",
+        });
       },
     );
-  });
+  } catch (error) {
+    console.error("Erro no processamento:", error);
+    res.status(500).json({ erro: "Erro ao processar o pedido" });
+  }
 };
 
-exports.updateServico = (req, res) => {
-  const id = req.params.id;
+exports.updateServico = async (req, res) => {
+  const servicoId = req.params.id;
+  const OficinaId = req.oficinaId;
   const {
     DataServico,
     Observacao,
@@ -105,37 +148,68 @@ exports.updateServico = (req, res) => {
     TipoServico,
     Kilometros,
     PrecoFinal,
+    AnexosAntigos, // NOVO: Vem do FormData do Frontend
   } = req.body;
 
-  const OficinaId = req.oficinaId;
   const dataConclusao = Status === "Concluído" ? new Date() : null;
 
-  const sql = `
-    UPDATE Servico 
-    SET DataServico = ?, Observacao = ?, Status = ?, Artigos = ?, TipoServico = ?, Kilometros = ?, PrecoFinal = ?, DataConclusao = ?
-    WHERE ServicoId = ? AND OficinaId = ?
-  `;
+  try {
+    // 1. Lemos os anexos antigos que o Frontend mandou manter
+    // O FormData envia tudo como string, por isso fazemos o JSON.parse
+    let listaAnexosMantidos = [];
+    if (AnexosAntigos) {
+      listaAnexosMantidos = JSON.parse(AnexosAntigos);
+    }
 
-  db.query(
-    sql,
-    [
-      DataServico,
-      Observacao,
-      Status,
-      Artigos,
-      TipoServico,
-      Kilometros,
-      PrecoFinal,
-      Status,
-      dataConclusao,
-      id,
-      OficinaId,
-    ],
-    (err, results) => {
-      if (err) {
-        return res.status(500).send("Erro ao atualizar serviço");
-      }
-      res.json({ message: "Serviço Atualizado" });
-    },
-  );
+    // 2. Fazemos o Upload de novos ficheiros para a Nuvem
+    let novosAnexosUrls = [];
+    if (req.files && req.files.length > 0) {
+      console.log(`Processando ${req.files.length} novos anexos na edição...`);
+      const uploadPromises = req.files.map((file) =>
+        uploadToCloudinary(file.buffer),
+      );
+      novosAnexosUrls = await Promise.all(uploadPromises);
+    }
+
+    // 3. Juntamos os antigos que sobreviveram com os recém-carregados
+    const anexosFinais = [...listaAnexosMantidos, ...novosAnexosUrls];
+
+    // Converte o Array final para JSON antes de guardar no MySQL
+    const anexosJSON =
+      anexosFinais.length > 0 ? JSON.stringify(anexosFinais) : null;
+
+    // 4. Guardar as alterações
+    const sql = `
+      UPDATE Servico 
+      SET DataServico = ?, Observacao = ?, Status = ?, Artigos = ?, TipoServico = ?, Kilometros = ?, PrecoFinal = ?, DataConclusao = ?, Anexos = ?
+      WHERE ServicoId = ? AND OficinaId = ?
+    `;
+
+    db.query(
+      sql,
+      [
+        DataServico,
+        Observacao,
+        Status,
+        Artigos,
+        TipoServico,
+        Kilometros,
+        PrecoFinal,
+        dataConclusao,
+        anexosJSON, // Array completo e correto
+        servicoId,
+        OficinaId,
+      ],
+      (err, results) => {
+        if (err) {
+          console.error("Erro ao atualizar:", err);
+          return res.status(500).send("Erro ao atualizar serviço");
+        }
+        res.json({ message: "Serviço Atualizado com Anexos" });
+      },
+    );
+  } catch (error) {
+    console.error("Erro na edição:", error);
+    res.status(500).json({ erro: "Erro ao processar a atualização" });
+  }
 };
