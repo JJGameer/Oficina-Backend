@@ -73,7 +73,7 @@ const login = async (req, res) => {
 
     const validPassword = await bcrypt.compare(Password, oficina.PasswordHash);
     if (!validPassword) {
-      return res.status(401).json({ error: "Password incorreta." });
+      return res.status(401).json({ error: "Palavra-passe incorreta." });
     }
 
     //gerar o token JWT

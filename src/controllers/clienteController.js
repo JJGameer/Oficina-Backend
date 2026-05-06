@@ -56,3 +56,45 @@ exports.updateCliente = (req, res) => {
     res.json({ message: "Cliente Atualizado" });
   });
 };
+
+exports.deleteCliente = (req, res) => {
+  const id = req.params.id;
+  const OficinaId = req.oficinaId;
+
+  // 1º PASSO: Perguntar à base de dados se este cliente tem carros
+  const checkSql =
+    "SELECT COUNT(*) AS totalCarros FROM Carro WHERE ClienteId = ?";
+
+  db.query(checkSql, [id], (err, results) => {
+    if (err) {
+      console.error("Erro ao verificar veículos:", err);
+      return res
+        .status(500)
+        .json({ erro: "Erro interno ao verificar o cliente." });
+    }
+
+    // Se o cliente tiver 1 ou mais carros, o BACKEND bloqueia logo a operação!
+    if (results[0].totalCarros > 0) {
+      return res.status(400).json({
+        erro: "Não é possível eliminar este cliente porque ainda tem veículos associados. Remova os veículos primeiro.",
+      });
+    }
+
+    // 2º PASSO: Se chegou aqui, é porque o totalCarros é 0. Podemos eliminar à vontade!
+    const deleteSql =
+      "DELETE FROM Cliente WHERE ClienteId = ? AND OficinaId = ?";
+
+    db.query(deleteSql, [id, OficinaId], (err, deleteResults) => {
+      if (err) {
+        console.error("Erro ao eliminar cliente:", err);
+        return res.status(500).json({ erro: "Erro ao eliminar o cliente." });
+      }
+
+      if (deleteResults.affectedRows === 0) {
+        return res.status(404).json({ erro: "Cliente não encontrado." });
+      }
+
+      res.json({ message: "Cliente eliminado com sucesso." });
+    });
+  });
+};
